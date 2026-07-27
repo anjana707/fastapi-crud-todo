@@ -2,8 +2,37 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from typing import Optional
-#Initialize the FastAPI app
-app = FastAPI()
+from contextlib import asynccontextmanager
+
+# Setup Engine
+sqlite_url = "sqlite:///tasks.db"
+engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+
+def seed_tasks_if_empty():
+    """Ensures 3 default tasks exist if database is fresh."""
+    with Session(engine) as session:
+        statement = select(Task)
+        existing_tasks = session.exec(statement).first()
+        
+        # Only seed if no tasks exist
+        if not existing_tasks:
+            default_tasks = [
+                Task(title="Buy Milk", done=False),
+                Task(title="Complete Assignment", done=False),
+                Task(title="Review Stage 5 Code", done=True),
+            ]
+            session.add_all(default_tasks)
+            session.commit()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Create tables automatically on startup
+    SQLModel.metadata.create_all(engine)
+    # 2. Seed default data if database is empty
+    seed_tasks_if_empty()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 #1. Define 3 example tasks 
 tasks = [
