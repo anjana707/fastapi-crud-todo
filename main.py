@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from sqlmodel import Field, Session, SQLModel, create_engine, select
-
+from typing import Optional
 #Initialize the FastAPI app
 app = FastAPI()
 
@@ -38,8 +38,12 @@ def health_check():
     }
 
 @app.get("/tasks")  # what happens when a client sends a GET request to the /tasks endpoint
-def get_tasks():
+def get_tasks(done: Optional[bool] = None):
     with Session(engine) as session: #opens temporary channel btw application and database
+        statement = select(Task)
+        #Apply filter only if "done" parameter provided by client 
+        if done is not None:
+            statement = statement.where(Task.done == done)
         tasks = session.exec(select(Task)).all() # builds a query equivalent to SELECT * FROM tasks
         return tasks  # Return the list of tasks
 
