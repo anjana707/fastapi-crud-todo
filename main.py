@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from sqlmodel import Field, Session, SQLModel, create_engine
 
 #Initialize the FastAPI app
 app = FastAPI()
@@ -27,15 +28,19 @@ def health_check():
 
 @app.get("/tasks")  # what happens when a client sends a GET request to the /tasks endpoint
 def get_tasks():
-    return tasks  # Return the list of tasks
+    with Session(engine) as session: #opens temporary channel btw application and database
+        tasks = session.exec(select(Task)).all() # builds a query equivalent to SELECT * FROM tasks
+        return tasks  # Return the list of tasks
 
 @app.get("/tasks/{task_id}")  # what happens when a client sends a GET request to the /tasks/{task_id} endpoint
 def get_task(task_id: int):
-    for task in tasks:  # Iterate through the list of tasks
-        if task["id"] == task_id:  # Check if the task ID matches the requested ID
-            return task  # Return the matching task
-    return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})  # Return an error message if no matching task is found
-
+    with Session(engine) as session:
+        task = session.get(Task, task_id) # SELECT * FROM tasks WHERE id = ? 
+        if not task:
+             return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})  # Return an error message if no matching task is found
+        
+        return task # Return the matching task
+   
 @app.post("/tasks", status_code=201)  # what happens when a client sends a POST request to the /tasks endpoint, sets the status code to 201 (Created)
 def create_task(task: dict):
     #1. Validate the input data
@@ -67,3 +72,22 @@ def delete_task(task_id: int):
             tasks.remove(task)
             return JSONResponse(status_code=204, content={"message": f"Task {task_id} deleted"})  # Return a success message if the task is deleted
     return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})  # Return an error message if the task is not found
+
+class Task(SQLModel, table = True): # three columnds: id, title, done 
+    id: int | None = Field(default=None, primary_key = True)
+    title: str
+    done: bool = False
+
+sqlite_file_name = "tasks.db"
+sqlite_url = f"sqlite:///{sqlite_file_name}" #url for database 
+engine = create_engine(sqlite_url) # create engine
+
+#Create Database on Startup 
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables() # on startup, create database and tables 
+
+
